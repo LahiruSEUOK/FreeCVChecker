@@ -6,7 +6,7 @@ export async function uploadResume(
   userIdentifier: string,
 ): Promise<ApiResponse<Resume>> {
   const form = new FormData();
-  form.append('file', file);
+  form.append('resume', file);
   form.append('userIdentifier', userIdentifier);
   const { data } = await apiClient.post<ApiResponse<Resume>>(
     '/api/v1/resumes/upload',
@@ -21,8 +21,8 @@ export async function scoreResume(
   jobDescription: string,
 ): Promise<ApiResponse<ResumeScore>> {
   const { data } = await apiClient.post<ApiResponse<ResumeScore>>(
-    `/api/v1/resumes/${resumeId}/score`,
-    { jobDescription },
+    '/api/v1/resumes/score',
+    { resumeId, jobDescription },
   );
   return data;
 }
