@@ -29,23 +29,23 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redissecret}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:Resis123#}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: freshercv_pgadmin
-    restart: unless-stopped
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@freshercv.com}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-pgadmin}
-    ports:
-      - "5050:80"
-    depends_on:
-      postgres:
-        condition: service_healthy
+  # pgadmin:
+  #   image: dpage/pgadmin4:latest
+  #   container_name: freshercv_pgadmin
+  #   restart: unless-stopped
+  #   environment:
+  #     PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@freshercv.com}
+  #     PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-pgadmin}
+  #   ports:
+  #     - "5050:80"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
 
   backend:
     build:
@@ -58,13 +58,13 @@ services:
     environment:
       NODE_ENV: production
       DB_HOST: postgres
-      DB_USERNAME: ${DB_USERNAME:-freshercv}
-      DB_PASSWORD: ${DB_PASSWORD:-secret}
-      DB_NAME: ${DB_NAME:-freshercv}
+      DB_USERNAME: ${DB_USERNAME:freshercv}
+      DB_PASSWORD: ${DB_PASSWORD:freshercv123#}
+      DB_NAME: ${DB_NAME:freshercv}
       REDIS_HOST: redis
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-redissecret}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:Redis123#}
     ports:
-      - "3000:3000"
+      - "7685:7685"
     depends_on:
       postgres:
         condition: service_healthy
