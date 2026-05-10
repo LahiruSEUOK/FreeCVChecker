@@ -5,7 +5,7 @@ import { InjectQueue } from '@nestjs/bull';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Queue } from 'bull';
 import { Repository } from 'typeorm';
-import Anthropic from '@anthropic-ai/sdk';
+import Groq from 'groq-sdk';
 import { AiRewrite } from './entities/ai-rewrite.entity';
 import { GenerateRewriteDto } from './dto/generate-rewrite.dto';
 
@@ -20,18 +20,18 @@ export interface RewriteResult {
 @Injectable()
 export class AiRewriteService {
   private readonly logger = new Logger(AiRewriteService.name);
-  private readonly anthropic: Anthropic;
+  private readonly groq: Groq;
 
   constructor(
     @InjectQueue(AI_REWRITE_QUEUE) private readonly rewriteQueue: Queue,
     @InjectRepository(AiRewrite) private readonly rewriteRepo: Repository<AiRewrite>,
   ) {
-    this.anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    this.groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
   }
 
   async generateRewrites(dto: GenerateRewriteDto): Promise<{ message: string; data: RewriteResult }> {
     try {
-      const rewrites = await this._callClaude(dto.bulletPoint, dto.jobDescription);
+      const rewrites = await this._callGroq(dto.bulletPoint, dto.jobDescription);
 
       const entity = this.rewriteRepo.create({
         resumeId: dto.resumeId,
@@ -70,7 +70,7 @@ export class AiRewriteService {
     }
   }
 
-  private async _callClaude(bullet: string, jobDesc: string): Promise<string[]> {
+  private async _callGroq(bullet: string, jobDesc: string): Promise<string[]> {
     const prompt = `You are an expert resume writer specialising in ATS-optimised resumes for fresh graduates.
 
 Job Description (extract key skills from this):
@@ -89,16 +89,14 @@ Generate exactly 3 improved versions that:
 Respond with ONLY a JSON array of 3 strings, no other text:
 ["rewrite 1", "rewrite 2", "rewrite 3"]`;
 
-    const message = await this.anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+    const completion = await this.groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
       max_tokens: 500,
       messages: [{ role: 'user', content: prompt }],
     });
 
-    const content = message.content[0];
-    if (content.type !== 'text') return this._fallbackRewrites(bullet);
-
-    const match = content.text.match(/\[[\s\S]*\]/);
+    const text = completion.choices[0]?.message?.content ?? '';
+    const match = text.match(/\[[\s\S]*\]/);
     if (!match) return this._fallbackRewrites(bullet);
 
     const parsed: unknown = JSON.parse(match[0]);

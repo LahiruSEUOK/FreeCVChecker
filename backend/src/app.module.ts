@@ -32,7 +32,7 @@ import { AuditLog } from './modules/analytics/entities/audit-log.entity';
         DB_NAME: Joi.string().required(),
         REDIS_HOST: Joi.string().required(),
         REDIS_PORT: Joi.number().default(6379),
-        ANTHROPIC_API_KEY: Joi.string().allow('').optional(),
+        GROQ_API_KEY: Joi.string().allow('').optional(),
       }),
     }),
     TypeOrmModule.forRootAsync({

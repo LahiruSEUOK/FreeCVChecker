@@ -5,11 +5,24 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import sanitizeHtml from 'sanitize-html';
+import Groq from 'groq-sdk';
 import { Resume, ParsedResumeData } from './entities/resume.entity';
 import { ResumeScore, ScoreBreakdown, Recommendation } from './entities/resume-score.entity';
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const pdfParse = require('pdf-parse') as (buf: Buffer) => Promise<{ text: string }>;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const mammoth = require('mammoth') as { extractRawText: (opts: { buffer: Buffer }) => Promise<{ value: string }> };
+
 export interface ScoreResult {
   scoreId: string;
+  score: number;
+  breakdown: ScoreBreakdown;
+  missingKeywords: string[];
+  recommendations: Recommendation[];
+}
+
+interface LLMScoreResponse {
   score: number;
   breakdown: ScoreBreakdown;
   missingKeywords: string[];
@@ -25,11 +38,14 @@ const TECH_SKILLS = [
 @Injectable()
 export class ResumesService {
   private readonly logger = new Logger(ResumesService.name);
+  private readonly groq: Groq;
 
   constructor(
     @InjectRepository(Resume) private readonly resumeRepo: Repository<Resume>,
     @InjectRepository(ResumeScore) private readonly scoreRepo: Repository<ResumeScore>,
-  ) {}
+  ) {
+    this.groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+  }
 
   async uploadAndParse(
     file: Express.Multer.File,
@@ -79,32 +95,36 @@ export class ResumesService {
       if (!resume) throw new NotFoundException('Resume not found');
 
       const cleanJob = sanitizeHtml(jobDescription, { allowedTags: [], allowedAttributes: {} });
-      const breakdown = this._calculateBreakdown(resume, cleanJob);
-      const score = Math.round(
-        breakdown.formatting * 0.1 +
-        breakdown.keywords * 0.4 +
-        breakdown.structure * 0.2 +
-        breakdown.content * 0.3,
-      );
 
-      const missingKeywords = this._findMissingKeywords(resume.resumeText, cleanJob);
-      const recommendations = this._buildRecommendations(missingKeywords, resume.parsedData);
+      let scoreData: LLMScoreResponse;
+      try {
+        scoreData = await this._scoreWithLLM(resume.resumeText, cleanJob);
+      } catch (llmErr) {
+        this.logger.warn('LLM scoring failed, using fallback', llmErr instanceof Error ? llmErr.message : llmErr);
+        scoreData = this._fallbackScore(resume, cleanJob);
+      }
 
       const scoreEntity = this.scoreRepo.create({
         resumeId,
         jobDescription: cleanJob.slice(0, 10000),
-        score,
-        breakdown,
-        missingKeywords,
-        recommendations,
+        score: scoreData.score,
+        breakdown: scoreData.breakdown,
+        missingKeywords: scoreData.missingKeywords,
+        recommendations: scoreData.recommendations,
       });
       const saved = await this.scoreRepo.save(scoreEntity);
 
-      this.logger.log(JSON.stringify({ action: 'RESUME_SCORED', resumeId, score, missingCount: missingKeywords.length }));
+      this.logger.log(JSON.stringify({ action: 'RESUME_SCORED', resumeId, score: scoreData.score }));
 
       return {
         message: 'Resume scored successfully',
-        data: { scoreId: saved.id, score, breakdown, missingKeywords, recommendations },
+        data: {
+          scoreId: saved.id,
+          score: scoreData.score,
+          breakdown: scoreData.breakdown,
+          missingKeywords: scoreData.missingKeywords,
+          recommendations: scoreData.recommendations,
+        },
       };
     } catch (err) {
       if (err instanceof NotFoundException) throw err;
@@ -113,12 +133,75 @@ export class ResumesService {
     }
   }
 
+  private async _scoreWithLLM(resumeText: string, jobDescription: string): Promise<LLMScoreResponse> {
+    const prompt = `You are an expert ATS (Applicant Tracking System) analyst. Analyse this resume against the job description and provide a detailed scoring.
+
+JOB DESCRIPTION:
+${jobDescription.slice(0, 2000)}
+
+RESUME:
+${resumeText.slice(0, 3000)}
+
+Score the resume on these criteria (0-100 each):
+- formatting: Has clear sections (Education, Experience, Skills), consistent layout, readable structure
+- keywords: How well resume keywords match the job description requirements
+- structure: Has dates, bullet points, quantified achievements
+- content: Uses strong action verbs, demonstrates relevant experience and skills
+
+Also identify:
+- missingKeywords: Important skills/keywords from the job description missing in the resume (max 8)
+- recommendations: Specific actionable improvements (max 4), each with a "field" (skills/experience/education/format) and "message"
+
+Calculate overall "score" as: formatting*0.1 + keywords*0.4 + structure*0.2 + content*0.3
+
+Respond with ONLY valid JSON, no other text:
+{
+  "score": <number 0-100>,
+  "breakdown": {
+    "formatting": <number>,
+    "keywords": <number>,
+    "structure": <number>,
+    "content": <number>
+  },
+  "missingKeywords": ["keyword1", "keyword2"],
+  "recommendations": [
+    {"field": "skills", "message": "specific advice"}
+  ]
+}`;
+
+    const completion = await this.groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      max_tokens: 800,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.1,
+    });
+
+    const text = completion.choices[0]?.message?.content ?? '';
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error('LLM did not return valid JSON');
+
+    const parsed = JSON.parse(match[0]) as LLMScoreResponse;
+    parsed.score = Math.min(100, Math.max(0, Math.round(parsed.score)));
+    return parsed;
+  }
+
   private async _extractText(file: Express.Multer.File): Promise<string | null> {
     try {
-      if (file.mimetype === 'text/plain') return file.buffer.toString('utf-8');
-      // For PDF/DOCX, use raw buffer text extraction as fallback
-      // In production integrate pdf-parse / mammoth
-      return file.buffer.toString('utf-8').replace(/[^\x20-\x7E\n\r\t]/g, ' ');
+      if (file.mimetype === 'text/plain') {
+        return file.buffer.toString('utf-8');
+      }
+
+      if (file.mimetype === 'application/pdf') {
+        const data = await pdfParse(file.buffer);
+        return data.text;
+      }
+
+      if (file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+        const result = await mammoth.extractRawText({ buffer: file.buffer });
+        return result.value;
+      }
+
+      return null;
     } catch (err) {
       this.logger.warn('_extractText failed', err instanceof Error ? err.message : err);
       return null;
@@ -158,33 +241,39 @@ export class ResumesService {
     return null;
   }
 
-  private _calculateBreakdown(resume: Resume, jobDesc: string): ScoreBreakdown {
+  private _fallbackScore(resume: Resume, jobDesc: string): LLMScoreResponse {
     const text = resume.resumeText.toLowerCase();
     const job = jobDesc.toLowerCase();
 
-    // Formatting: check for section headings, consistent structure
     const hasSections = ['experience', 'education', 'skills'].filter((s) => text.includes(s)).length;
     const formatting = Math.min(100, hasSections * 30 + 10);
 
-    // Keywords: overlap between job words and resume
     const jobWords = new Set(job.split(/\s+/).filter((w) => w.length > 4));
     const resumeWords = new Set(text.split(/\s+/));
     let matches = 0;
     jobWords.forEach((w) => { if (resumeWords.has(w)) matches++; });
     const keywords = jobWords.size > 0 ? Math.min(100, Math.round((matches / jobWords.size) * 100)) : 50;
 
-    // Structure: checks for dates, bullet points, quantification
     const hasDates = /\d{4}/.test(resume.resumeText) ? 30 : 0;
     const hasBullets = (resume.resumeText.match(/^[\•\-\*]/m) != null) ? 40 : 0;
     const hasNumbers = /\d+%|\d+\+/.test(resume.resumeText) ? 30 : 0;
     const structure = Math.min(100, hasDates + hasBullets + hasNumbers);
 
-    // Content quality
     const actionVerbs = ['led','built','developed','designed','implemented','improved','achieved','managed','created','launched'];
     const verbCount = actionVerbs.filter((v) => text.includes(v)).length;
     const content = Math.min(100, verbCount * 10 + (resume.parsedData?.skills.length ?? 0) * 5);
 
-    return { formatting, keywords, structure, content };
+    const score = Math.round(formatting * 0.1 + keywords * 0.4 + structure * 0.2 + content * 0.3);
+
+    const missingKeywords = this._findMissingKeywords(resume.resumeText, jobDesc);
+    const recommendations: Recommendation[] = [];
+    if (missingKeywords.length > 0) {
+      recommendations.push({ field: 'skills', message: `Add these keywords: ${missingKeywords.slice(0, 3).join(', ')}` });
+    }
+    recommendations.push({ field: 'experience', message: 'Quantify achievements with numbers (e.g., "improved speed by 40%")' });
+    recommendations.push({ field: 'format', message: 'Use bullet points starting with strong action verbs (Led, Built, Designed)' });
+
+    return { score, breakdown: { formatting, keywords, structure, content }, missingKeywords, recommendations };
   }
 
   private _findMissingKeywords(resumeText: string, jobDesc: string): string[] {
@@ -204,24 +293,6 @@ export class ResumesService {
       .filter((w) => !lower.includes(w));
 
     return [...new Set([...missing, ...topJobWords])].slice(0, 10);
-  }
-
-  private _buildRecommendations(
-    missingKeywords: string[],
-    parsedData: ParsedResumeData | null,
-  ): Recommendation[] {
-    const recs: Recommendation[] = [];
-
-    if (missingKeywords.length > 0) {
-      recs.push({ field: 'skills', message: `Add these keywords: ${missingKeywords.slice(0, 3).join(', ')}` });
-    }
-    if (!parsedData?.skills.length) {
-      recs.push({ field: 'skills', message: 'Add a dedicated Skills section with technical tools' });
-    }
-    recs.push({ field: 'experience', message: 'Quantify achievements with numbers (e.g., "improved speed by 40%")' });
-    recs.push({ field: 'format', message: 'Use bullet points starting with strong action verbs (Led, Built, Designed)' });
-
-    return recs;
   }
 
   private async _findResumeById(id: string): Promise<Resume | null> {
