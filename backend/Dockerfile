@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────
-# Stage 1: Install Dependencies
+# Stage 1: Dependencies
 # ─────────────────────────────────────────────────────────────
 FROM node:20-alpine AS deps
 
@@ -7,15 +7,12 @@ WORKDIR /app
 
 COPY package*.json ./
 
-# Install all dependencies for build
+# Install ALL dependencies including devDependencies
 RUN npm ci
-
-# Save production-only node_modules separately
-RUN npm prune --omit=dev && cp -R node_modules /tmp/prod_modules
 
 
 # ─────────────────────────────────────────────────────────────
-# Stage 2: Build Application
+# Stage 2: Build
 # ─────────────────────────────────────────────────────────────
 FROM node:20-alpine AS build
 
@@ -28,7 +25,7 @@ RUN npm run build
 
 
 # ─────────────────────────────────────────────────────────────
-# Stage 3: Production Image
+# Stage 3: Production
 # ─────────────────────────────────────────────────────────────
 FROM node:20-alpine AS production
 
@@ -37,22 +34,19 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Copy built app
-COPY --from=build /app/dist ./dist
-
-# Copy production dependencies
-COPY --from=deps /tmp/prod_modules ./node_modules
-
-# Copy package files
 COPY package*.json ./
+
+# Install ONLY production dependencies
+RUN npm ci --omit=dev
+
+# Copy built application
+COPY --from=build /app/dist ./dist
 
 # Create non-root user
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 USER appuser
 
-# Expose app port
 EXPOSE 3000
 
-# Start application
 CMD ["node", "dist/main.js"]
