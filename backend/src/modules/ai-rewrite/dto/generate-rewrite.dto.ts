@@ -14,7 +14,7 @@ export class GenerateRewriteDto {
 
   @ApiProperty({ description: 'Job description to align rewrites with' })
   @IsString()
-  @MinLength(50)
+  @MinLength(0)
   @MaxLength(10000)
   jobDescription!: string;
 }

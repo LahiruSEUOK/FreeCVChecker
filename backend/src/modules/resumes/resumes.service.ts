@@ -22,6 +22,18 @@ export interface ScoreResult {
   recommendations: Recommendation[];
 }
 
+export interface SectionSuggestion {
+  section: string;
+  issue: string;
+  currentContent: string;
+  improvedVersion: string;
+}
+
+export interface EnhanceResult {
+  estimatedNewScore: number;
+  sections: SectionSuggestion[];
+}
+
 interface LLMScoreResponse {
   score: number;
   breakdown: ScoreBreakdown;
@@ -130,6 +142,73 @@ export class ResumesService {
       if (err instanceof NotFoundException) throw err;
       this.logger.error('scoreResume failed', err instanceof Error ? err.stack : err);
       throw new InternalServerErrorException('Failed to score resume');
+    }
+  }
+
+  async enhanceResume(
+    resumeId: string,
+    jobDescription: string,
+  ): Promise<{ message: string; data: EnhanceResult }> {
+    const resume = await this._findResumeById(resumeId);
+    if (!resume) throw new NotFoundException('Resume not found');
+
+    const cleanJob = sanitizeHtml(jobDescription, { allowedTags: [], allowedAttributes: {} });
+
+    const prompt = `You are an expert CV/resume coach. Analyse this resume against the job description and provide specific, actionable section-by-section improvements.
+
+JOB DESCRIPTION:
+${cleanJob.slice(0, 2000)}
+
+RESUME:
+${resume.resumeText.slice(0, 3000)}
+
+For each weak section in the resume, provide:
+- section: the section name (e.g. "Summary", "Skills", "Experience", "Education")
+- issue: one sentence describing the problem
+- currentContent: the relevant current text from the resume (max 150 chars)
+- improvedVersion: a ready-to-use improved version the candidate can copy-paste (max 300 chars)
+
+Focus on the 3-4 most impactful improvements. Prioritise:
+1. Adding missing keywords from the job description naturally
+2. Quantifying achievements with numbers
+3. Strengthening weak action verbs
+4. Adding a professional summary if missing
+
+Also provide estimatedNewScore (0-100) — what score the resume would likely get after applying all suggestions.
+
+Respond with ONLY valid JSON:
+{
+  "estimatedNewScore": <number>,
+  "sections": [
+    {
+      "section": "Skills",
+      "issue": "Missing key technologies mentioned in the job description",
+      "currentContent": "Python, Java",
+      "improvedVersion": "Python, Java, TypeScript, Docker, Kubernetes, Node.js, REST APIs"
+    }
+  ]
+}`;
+
+    try {
+      const completion = await this.groq.chat.completions.create({
+        model: 'llama-3.3-70b-versatile',
+        max_tokens: 1200,
+        temperature: 0.2,
+        messages: [{ role: 'user', content: prompt }],
+      });
+
+      const text = completion.choices[0]?.message?.content ?? '';
+      const match = text.match(/\{[\s\S]*\}/);
+      if (!match) throw new Error('No JSON in response');
+
+      const parsed = JSON.parse(match[0]) as EnhanceResult;
+      parsed.estimatedNewScore = Math.min(100, Math.max(0, Math.round(parsed.estimatedNewScore)));
+
+      this.logger.log(JSON.stringify({ action: 'RESUME_ENHANCED', resumeId, sections: parsed.sections.length }));
+      return { message: 'Enhancement suggestions generated', data: parsed };
+    } catch (err) {
+      this.logger.error('enhanceResume failed', err instanceof Error ? err.message : err);
+      throw new InternalServerErrorException('Failed to generate enhancement suggestions');
     }
   }
 

@@ -3,6 +3,8 @@
 .env.local
 .env.*.local
 
+.claude/settings.local.json
+
 # deps
 node_modules/
 backend/node_modules/

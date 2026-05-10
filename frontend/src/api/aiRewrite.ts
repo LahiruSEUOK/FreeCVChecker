@@ -24,7 +24,7 @@ export async function selectRewrite(
 ): Promise<ApiResponse<{ selected: string }>> {
   const { data } = await apiClient.patch<ApiResponse<{ selected: string }>>(
     `/api/v1/ai-rewrite/${rewriteId}/select`,
-    { selectedRewrite },
+    { selected: selectedRewrite },
   );
   return data;
 }

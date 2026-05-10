@@ -30,30 +30,36 @@ export class AiRewriteService {
   }
 
   async generateRewrites(dto: GenerateRewriteDto): Promise<{ message: string; data: RewriteResult }> {
+    let rewrites: string[];
     try {
-      const rewrites = await this._callGroq(dto.bulletPoint, dto.jobDescription);
+      rewrites = await this._callGroq(dto.bulletPoint, dto.jobDescription);
+    } catch (err) {
+      this.logger.error('Groq call failed', err instanceof Error ? err.message : err);
+      rewrites = this._fallbackRewrites(dto.bulletPoint);
+      return {
+        message: 'Rewrites generated (fallback mode)',
+        data: { original: dto.bulletPoint, rewrites, rewriteId: '' },
+      };
+    }
 
+    let rewriteId = '';
+    try {
       const entity = this.rewriteRepo.create({
         resumeId: dto.resumeId,
         originalBullet: dto.bulletPoint,
         rewrites,
       });
       const saved = await this.rewriteRepo.save(entity);
-
-      this.logger.log(JSON.stringify({ action: 'REWRITES_GENERATED', resumeId: dto.resumeId, rewriteId: saved.id }));
-
-      return {
-        message: 'Rewrites generated successfully',
-        data: { original: dto.bulletPoint, rewrites, rewriteId: saved.id },
-      };
+      rewriteId = saved.id;
+      this.logger.log(JSON.stringify({ action: 'REWRITES_GENERATED', resumeId: dto.resumeId, rewriteId }));
     } catch (err) {
-      this.logger.error('generateRewrites failed', err instanceof Error ? err.stack : err);
-      const fallback = this._fallbackRewrites(dto.bulletPoint);
-      return {
-        message: 'Rewrites generated (fallback mode)',
-        data: { original: dto.bulletPoint, rewrites: fallback, rewriteId: '' },
-      };
+      this.logger.warn('Failed to persist rewrite record', err instanceof Error ? err.message : err);
     }
+
+    return {
+      message: 'Rewrites generated successfully',
+      data: { original: dto.bulletPoint, rewrites, rewriteId },
+    };
   }
 
   async selectRewrite(rewriteId: string, selected: string): Promise<{ message: string; data: { updated: boolean } }> {

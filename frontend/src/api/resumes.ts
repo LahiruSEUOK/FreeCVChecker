@@ -1,5 +1,5 @@
 import apiClient from './client';
-import type { ApiResponse, Resume, ResumeScore } from '../types';
+import type { ApiResponse, Resume, ResumeScore, EnhanceResult } from '../types';
 
 export async function uploadResume(
   file: File,
@@ -12,6 +12,17 @@ export async function uploadResume(
     '/api/v1/resumes/upload',
     form,
     { headers: { 'Content-Type': 'multipart/form-data' } },
+  );
+  return data;
+}
+
+export async function enhanceResume(
+  resumeId: string,
+  jobDescription: string,
+): Promise<ApiResponse<EnhanceResult>> {
+  const { data } = await apiClient.post<ApiResponse<EnhanceResult>>(
+    '/api/v1/resumes/enhance',
+    { resumeId, jobDescription },
   );
   return data;
 }

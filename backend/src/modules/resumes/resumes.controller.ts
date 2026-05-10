@@ -7,6 +7,7 @@ import { ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { Request } from 'express';
 import { ResumesService } from './resumes.service';
 import { ScoreResumeDto } from './dto/score-resume.dto';
+import { EnhanceResumeDto } from './dto/enhance-resume.dto';
 
 @ApiTags('resumes')
 @Controller('api/v1/resumes')
@@ -30,5 +31,11 @@ export class ResumesController {
   @ApiOperation({ summary: 'Score a resume against a job description' })
   scoreResume(@Body() dto: ScoreResumeDto) {
     return this.resumesService.scoreResume(dto.resumeId, dto.jobDescription);
+  }
+
+  @Post('enhance')
+  @ApiOperation({ summary: 'Get section-by-section AI enhancement suggestions' })
+  enhanceResume(@Body() dto: EnhanceResumeDto) {
+    return this.resumesService.enhanceResume(dto.resumeId, dto.jobDescription);
   }
 }

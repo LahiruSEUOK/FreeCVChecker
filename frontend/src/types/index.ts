@@ -41,6 +41,18 @@ export interface ResumeScore {
   recommendations: Recommendation[];
 }
 
+export interface SectionSuggestion {
+  section: string;
+  issue: string;
+  currentContent: string;
+  improvedVersion: string;
+}
+
+export interface EnhanceResult {
+  estimatedNewScore: number;
+  sections: SectionSuggestion[];
+}
+
 export interface Resume {
   resumeId: string;
   parsedData: ParsedResumeData | null;
