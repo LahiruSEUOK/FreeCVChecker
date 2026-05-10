@@ -64,7 +64,7 @@ services:
       REDIS_HOST: redis
       REDIS_PASSWORD: ${REDIS_PASSWORD:Redis123#}
     ports:
-      - "7685:7685"
+      - "3000:3000"
     depends_on:
       postgres:
         condition: service_healthy
