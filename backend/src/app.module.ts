@@ -45,7 +45,7 @@ import { AuditLog } from './modules/analytics/entities/audit-log.entity';
         password: config.get<string>('DB_PASSWORD'),
         database: config.get<string>('DB_NAME'),
         entities: [Resume, ResumeScore, AiRewrite, Referral, AdImpression, AuditLog],
-        synchronize: config.get<string>('NODE_ENV') === 'development',
+        synchronize: config.get<string>('DB_SYNCHRONIZE') === 'true' || config.get<string>('NODE_ENV') === 'development',
         logging: config.get<string>('NODE_ENV') === 'development',
       }),
     }),
