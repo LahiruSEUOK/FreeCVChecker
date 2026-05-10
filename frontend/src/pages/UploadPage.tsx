@@ -59,10 +59,10 @@ export default function UploadPage() {
     try {
       const uid = getAnonymousId();
       const res = await uploadResume(file, uid);
-      setResumeId(res.data.id);
-      setFileName(res.data.fileName);
+      setResumeId(res.data.resumeId);
+      setFileName(file.name);
       if (res.data.parsedData) setParsedData(res.data.parsedData);
-      setUploadedResumeId(res.data.id);
+      setUploadedResumeId(res.data.resumeId);
       setStep('jd');
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : 'Upload failed');

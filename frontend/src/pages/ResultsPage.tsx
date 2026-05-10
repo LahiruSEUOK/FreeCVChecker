@@ -10,9 +10,9 @@ import Button from '../components/ui/Button';
 import { useResumeStore } from '../store/resumeStore';
 import type { Recommendation } from '../types';
 
-function recommendationVariant(type: Recommendation['type']) {
-  if (type === 'critical') return 'danger';
-  if (type === 'improvement') return 'warning';
+function recommendationVariant(field: Recommendation['field']) {
+  if (field === 'skills') return 'danger';
+  if (field === 'experience') return 'warning';
   return 'info';
 }
 
@@ -54,7 +54,7 @@ export default function ResultsPage() {
   const { breakdown, missingKeywords, recommendations } = score;
 
   const allBullets = parsedData?.experience.flatMap((exp) =>
-    exp.bullets.map((b) => ({ bullet: b, company: exp.company, role: exp.role })),
+    exp.bullets.map((b) => ({ bullet: b, company: exp.company, title: exp.title })),
   ) ?? [];
 
   return (
@@ -118,7 +118,7 @@ export default function ResultsPage() {
             <div className="card space-y-5">
               <h2 className="font-bold text-slate-900">Score Breakdown</h2>
               {scoreBar(breakdown.keywords, 'Keyword Match', '40%')}
-              {scoreBar(breakdown.contentQuality, 'Content Quality', '30%')}
+              {scoreBar(breakdown.content, 'Content Quality', '30%')}
               {scoreBar(breakdown.structure, 'Structure', '20%')}
               {scoreBar(breakdown.formatting, 'Formatting', '10%')}
             </div>
@@ -137,15 +137,15 @@ export default function ResultsPage() {
                   <div
                     key={i}
                     className={`flex items-start gap-3 rounded-xl p-4 ${
-                      rec.type === 'critical'
+                      rec.field === 'skills'
                         ? 'bg-red-50 ring-1 ring-red-100'
-                        : rec.type === 'improvement'
+                        : rec.field === 'experience'
                         ? 'bg-amber-50 ring-1 ring-amber-100'
                         : 'bg-brand-50 ring-1 ring-brand-100'
                     }`}
                   >
-                    <Badge variant={recommendationVariant(rec.type)}>
-                      {rec.type}
+                    <Badge variant={recommendationVariant(rec.field)}>
+                      {rec.field}
                     </Badge>
                     <p className="text-sm text-slate-700 flex-1">{rec.message}</p>
                   </div>
@@ -171,7 +171,7 @@ export default function ResultsPage() {
                 {parsedData?.experience.map((exp, eIdx) => (
                   <div key={eIdx}>
                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
-                      {exp.role} @ {exp.company}
+                      {exp.title} @ {exp.company}
                     </p>
                     <ul className="space-y-2">
                       {exp.bullets.map((bullet, bIdx) => (

@@ -1,17 +1,16 @@
 export interface ParsedResumeData {
-  name: string | null;
-  email: string | null;
-  phone: string | null;
+  name?: string;
+  email?: string;
+  phone?: string;
   skills: string[];
   experience: ExperienceItem[];
   education: EducationItem[];
-  summary: string | null;
-  rawText: string;
+  summary?: string;
 }
 
 export interface ExperienceItem {
   company: string;
-  role: string;
+  title: string;
   duration: string;
   bullets: string[];
 }
@@ -26,16 +25,16 @@ export interface ScoreBreakdown {
   formatting: number;
   keywords: number;
   structure: number;
-  contentQuality: number;
+  content: number;
 }
 
 export interface Recommendation {
-  type: 'critical' | 'improvement' | 'suggestion';
+  field: string;
   message: string;
 }
 
 export interface ResumeScore {
-  id: string;
+  scoreId: string;
   score: number;
   breakdown: ScoreBreakdown;
   missingKeywords: string[];
@@ -43,10 +42,8 @@ export interface ResumeScore {
 }
 
 export interface Resume {
-  id: string;
-  fileName: string;
+  resumeId: string;
   parsedData: ParsedResumeData | null;
-  createdAt: string;
 }
 
 export interface ApiResponse<T> {
