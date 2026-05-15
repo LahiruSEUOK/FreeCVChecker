@@ -18,27 +18,86 @@ function recommendationVariant(field: Recommendation['field']) {
   return 'info';
 }
 
-function scoreBar(value: number, label: string, weight: string) {
-  const color =
+function recommendationAccent(field: Recommendation['field']) {
+  if (field === 'skills') return 'border-red-400 bg-red-50';
+  if (field === 'experience') return 'border-amber-400 bg-amber-50';
+  return 'border-brand-400 bg-brand-50';
+}
+
+interface MetricCardProps {
+  label: string;
+  value: number;
+  weight: string;
+  icon: React.ReactNode;
+  iconBg: string;
+}
+
+function MetricCard({ label, value, weight, icon, iconBg }: MetricCardProps) {
+  const barColor =
     value >= 75 ? 'bg-emerald-500' : value >= 50 ? 'bg-amber-400' : 'bg-red-400';
+  const textColor =
+    value >= 75 ? 'text-emerald-600' : value >= 50 ? 'text-amber-600' : 'text-red-500';
+
   return (
-    <div key={label}>
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-sm font-medium text-slate-700">{label}</span>
+    <div className="metric-card group hover:border-slate-200 transition-all">
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-400">{weight} weight</span>
-          <span className="text-sm font-semibold text-slate-900">{value}/100</span>
+          <div className={`flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-lg ${iconBg} [&>svg]:h-3.5 [&>svg]:w-3.5 sm:[&>svg]:h-4 sm:[&>svg]:w-4`}>
+            {icon}
+          </div>
+          <div>
+            <p className="text-xs sm:text-sm font-semibold text-slate-800">{label}</p>
+            <p className="text-[10px] sm:text-xs text-slate-400">{weight} weight</p>
+          </div>
         </div>
+        <span className={`text-lg sm:text-xl font-extrabold ${textColor}`}>{value}</span>
       </div>
-      <div className="h-2.5 w-full rounded-full bg-slate-100 overflow-hidden">
+      <div className="h-1.5 sm:h-2 w-full rounded-full bg-slate-200 overflow-hidden">
         <div
-          className={`h-full rounded-full transition-all duration-1000 ease-out ${color}`}
+          className={`h-full rounded-full transition-all duration-1000 ease-out ${barColor}`}
           style={{ width: `${value}%` }}
         />
       </div>
     </div>
   );
 }
+
+const METRIC_ICONS = {
+  keywords: (
+    <svg className="h-4 w-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+    </svg>
+  ),
+  content: (
+    <svg className="h-4 w-4 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+    </svg>
+  ),
+  structure: (
+    <svg className="h-4 w-4 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h8M4 18h8" />
+    </svg>
+  ),
+  formatting: (
+    <svg className="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+    </svg>
+  ),
+};
+
+const TAB_LABELS: Record<string, string> = {
+  overview: 'Score Breakdown',
+  enhance: '✦ Enhance CV',
+  bullets: 'Rewrite Bullets',
+  share: 'Share',
+};
+
+const TAB_LABELS_MOBILE: Record<string, string> = {
+  overview: 'Score',
+  enhance: '✦ Enhance',
+  bullets: 'Bullets',
+  share: 'Share',
+};
 
 export default function ResultsPage() {
   const navigate = useNavigate();
@@ -51,8 +110,57 @@ export default function ResultsPage() {
   const [enhanceError, setEnhanceError] = useState<string | null>(null);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const [showEnhanceModal, setShowEnhanceModal] = useState(false);
+  const [showPromptModal, setShowPromptModal] = useState(false);
+  const [promptCopied, setPromptCopied] = useState(false);
 
   const { resumeId, jobDescription } = useResumeStore();
+
+  function buildAIPrompt(): string {
+    const skills = parsedData?.skills?.join(', ') || 'Not listed';
+    const experienceBullets = parsedData?.experience
+      ?.flatMap((e) => e.bullets)
+      .slice(0, 6)
+      .map((b) => `• ${b}`)
+      .join('\n') || 'Not listed';
+    const missing = score?.missingKeywords?.join(', ') || 'None identified';
+    const recs = score?.recommendations
+      ?.map((r) => `• [${r.field}] ${r.message}`)
+      .join('\n') || '';
+
+    return `I need help rewriting my CV to score higher on ATS (Applicant Tracking System) filters.
+
+MY CURRENT ATS SCORE: ${score?.score ?? 0}/100
+
+━━━ JOB I'M APPLYING FOR ━━━
+${jobDescription}
+
+━━━ MY CURRENT CV ━━━
+SKILLS: ${skills}
+
+EXPERIENCE:
+${experienceBullets}
+
+SUMMARY: ${parsedData?.summary || 'Not provided'}
+
+━━━ WHAT NEEDS TO IMPROVE ━━━
+Missing keywords to add naturally: ${missing}
+
+Specific improvement areas:
+${recs}
+
+━━━ PLEASE ━━━
+1. Rewrite my CV incorporating the missing keywords naturally
+2. Strengthen each bullet point with a strong action verb + quantified result
+3. Write a compelling 3-line professional summary targeting this job
+4. Keep it authentic — I am a fresh graduate
+5. Return the full rewritten CV with these sections: Summary, Skills, Experience, Education`;
+  }
+
+  async function handleCopyPrompt() {
+    await navigator.clipboard.writeText(buildAIPrompt());
+    setPromptCopied(true);
+    setTimeout(() => setPromptCopied(false), 3000);
+  }
 
   async function handleEnhance() {
     if (!resumeId || enhanceResult) return;
@@ -92,97 +200,176 @@ export default function ResultsPage() {
     exp.bullets.map((b) => ({ bullet: b, company: exp.company, title: exp.title })),
   ) ?? [];
 
+  const scoreStatusBg =
+    score.score >= 75
+      ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+      : score.score >= 50
+      ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
+      : 'bg-red-50 text-red-700 ring-1 ring-red-200';
+
+  const scoreStatusDot =
+    score.score >= 75 ? 'bg-emerald-500' : score.score >= 50 ? 'bg-amber-500' : 'bg-red-500';
+
+  const scoreStatusLabel =
+    score.score >= 75 ? 'Strong Match' : score.score >= 50 ? 'Competitive' : 'Weak Match';
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       {/* Nav */}
-      <header className="sticky top-0 z-40 border-b border-slate-100 bg-white/80 backdrop-blur-md">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
+      <header className="sticky top-0 z-40 glass-nav">
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 sm:px-5 py-2.5 sm:py-4">
           <a href="/" className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white text-sm font-bold">F</div>
-            <span className="text-lg font-bold text-slate-900">FresherCV</span>
+            <div className="flex h-7 w-7 sm:h-9 sm:w-9 items-center justify-center rounded-lg sm:rounded-xl bg-gradient-to-br from-brand-600 to-violet-600 text-white text-xs sm:text-sm font-bold shadow-soft">
+              F
+            </div>
+            <span className="text-sm sm:text-lg font-bold text-slate-950 tracking-tight">FresherCV</span>
           </a>
           <div className="flex items-center gap-3">
             <Button variant="secondary" size="sm" onClick={() => navigate('/upload')}>
-              Analyze Another
+              <span className="hidden sm:inline">Analyse Another</span>
+              <span className="sm:hidden">New Scan</span>
             </Button>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 mx-auto w-full max-w-5xl px-4 py-8 pb-24 space-y-6 animate-fade-in">
+      <main className="flex-1 mx-auto w-full max-w-5xl px-3 sm:px-4 py-4 sm:py-8 pb-24 sm:pb-28 space-y-3 sm:space-y-5 animate-fade-in">
         {/* Top ad */}
         <AdSlot slot="banner" />
 
-        {/* Score hero */}
-        <div className="card text-center">
-          <p className="text-sm text-slate-500 mb-1">
-            {fileName && <span className="font-medium text-slate-700">{fileName} · </span>}
-            ATS Compatibility Score
-          </p>
-          <ScoreGauge score={score.score} size={220} />
-          <p className="mt-3 text-sm text-slate-500">
-            {score.score >= 75
-              ? 'Your resume is well-optimised for this job. Great work!'
-              : score.score >= 50
-              ? 'Your resume partially matches. Follow recommendations below to improve.'
-              : 'Your resume needs significant improvements to pass ATS filters.'}
-          </p>
+        {/* Score hero — split layout */}
+        <div className="card !p-4 sm:!p-6">
+          <div className="grid md:grid-cols-2 gap-4 sm:gap-6 items-center">
+            {/* Left: gauge */}
+            <div className="flex flex-col items-center">
+              <ScoreGauge score={score.score} size={180} />
+            </div>
+
+            {/* Right: score info */}
+            <div className="space-y-3 sm:space-y-4">
+              {fileName && (
+                <p className="text-xs text-slate-400 font-medium uppercase tracking-wide truncate">{fileName}</p>
+              )}
+
+              <div>
+                <div className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 sm:px-3 sm:py-1 text-xs font-semibold ${scoreStatusBg}`}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${scoreStatusDot}`} />
+                  {scoreStatusLabel}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs sm:text-sm text-slate-500 mb-2">
+                  {score.score >= 75
+                    ? 'Your resume is well-optimised for this role.'
+                    : score.score >= 50
+                    ? `${75 - score.score} points away from a Strong Match.`
+                    : 'Your resume needs work to pass ATS filters.'}
+                </p>
+
+                {/* Progress to 75 bar */}
+                {score.score < 75 && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400">Progress to Strong Match (75)</span>
+                      <span className="font-semibold text-slate-600">{score.score}/75</span>
+                    </div>
+                    <div className="h-1.5 sm:h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-brand-500 to-violet-500 transition-all duration-1000"
+                        style={{ width: `${Math.min(100, (score.score / 75) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={() => setShowPromptModal(true)}
+                className="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-medium text-violet-700 hover:bg-violet-100 transition-colors"
+              >
+                <svg className="h-3.5 w-3.5 sm:h-4 sm:w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-3 3-3-3z" />
+                </svg>
+                Generate full CV with AI
+              </button>
+            </div>
+          </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex border-b border-slate-200 gap-1 overflow-x-auto">
+        {/* Tabs — pill style */}
+        <div className="bg-white rounded-2xl shadow-soft ring-1 ring-slate-100/80 p-1 sm:p-1.5 flex gap-0.5 sm:gap-1">
           {(['overview', 'enhance', 'bullets', 'share'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => { setActiveTab(tab); if (tab === 'enhance') handleEnhance(); }}
-              className={`px-5 py-2.5 text-sm font-medium rounded-t-lg transition-colors whitespace-nowrap ${
+              className={`tab-pill flex-1 text-center !text-xs sm:!text-sm !px-2 sm:!px-3 !py-1.5 sm:!py-2 ${
                 activeTab === tab
-                  ? 'border-b-2 border-brand-600 text-brand-700 bg-white'
-                  : 'text-slate-500 hover:text-slate-700'
+                  ? 'bg-gradient-to-r from-brand-600 to-brand-700 text-white shadow-soft'
+                  : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
               }`}
             >
-              {tab === 'overview' ? 'Score Breakdown' : tab === 'enhance' ? '✨ Enhance CV' : tab === 'bullets' ? 'Rewrite Bullets' : 'Share & Export'}
+              <span className="hidden sm:inline">{TAB_LABELS[tab]}</span>
+              <span className="sm:hidden">{TAB_LABELS_MOBILE[tab]}</span>
             </button>
           ))}
         </div>
 
         {/* Tab: Overview */}
         {activeTab === 'overview' && (
-          <div className="grid lg:grid-cols-2 gap-6 animate-slide-up">
+          <div className="grid lg:grid-cols-2 gap-5 animate-fade-in-up">
             {/* Score breakdown */}
-            <div className="card space-y-5">
-              <h2 className="font-bold text-slate-900">Score Breakdown</h2>
-              {scoreBar(breakdown.keywords, 'Keyword Match', '40%')}
-              {scoreBar(breakdown.content, 'Content Quality', '30%')}
-              {scoreBar(breakdown.structure, 'Structure', '20%')}
-              {scoreBar(breakdown.formatting, 'Formatting', '10%')}
+            <div className="card space-y-4">
+              <h2 className="font-bold text-slate-950 text-base">Score Breakdown</h2>
+              <MetricCard
+                label="Keyword Match"
+                value={breakdown.keywords}
+                weight="40%"
+                icon={METRIC_ICONS.keywords}
+                iconBg="bg-amber-50"
+              />
+              <MetricCard
+                label="Content Quality"
+                value={breakdown.content}
+                weight="30%"
+                icon={METRIC_ICONS.content}
+                iconBg="bg-brand-50"
+              />
+              <MetricCard
+                label="Structure"
+                value={breakdown.structure}
+                weight="20%"
+                icon={METRIC_ICONS.structure}
+                iconBg="bg-violet-50"
+              />
+              <MetricCard
+                label="Formatting"
+                value={breakdown.formatting}
+                weight="10%"
+                icon={METRIC_ICONS.formatting}
+                iconBg="bg-slate-100"
+              />
             </div>
 
             {/* Missing keywords */}
             <div className="card space-y-4">
-              <h2 className="font-bold text-slate-900">Missing Keywords</h2>
+              <h2 className="font-bold text-slate-950 text-base">Missing Keywords</h2>
               <MissingKeywords keywords={missingKeywords} />
             </div>
 
             {/* Recommendations */}
-            <div className="card space-y-3 lg:col-span-2">
-              <h2 className="font-bold text-slate-900">Recommendations</h2>
-              <div className="space-y-3">
+            <div className="card space-y-3 sm:space-y-4 lg:col-span-2">
+              <h2 className="font-bold text-slate-950 text-sm sm:text-base">Recommendations</h2>
+              <div className="space-y-2 sm:space-y-3">
                 {recommendations.map((rec, i) => (
                   <div
                     key={i}
-                    className={`flex items-start gap-3 rounded-xl p-4 ${
-                      rec.field === 'skills'
-                        ? 'bg-red-50 ring-1 ring-red-100'
-                        : rec.field === 'experience'
-                        ? 'bg-amber-50 ring-1 ring-amber-100'
-                        : 'bg-brand-50 ring-1 ring-brand-100'
-                    }`}
+                    className={`flex items-start gap-2 sm:gap-3 rounded-xl p-3 sm:p-4 border-l-4 ${recommendationAccent(rec.field)}`}
                   >
                     <Badge variant={recommendationVariant(rec.field)}>
                       {rec.field}
                     </Badge>
-                    <p className="text-sm text-slate-700 flex-1">{rec.message}</p>
+                    <p className="text-xs sm:text-sm text-slate-700 flex-1 leading-relaxed">{rec.message}</p>
                   </div>
                 ))}
               </div>
@@ -192,9 +379,9 @@ export default function ResultsPage() {
 
         {/* Tab: Enhance CV */}
         {activeTab === 'enhance' && (
-          <div className="space-y-4 animate-slide-up">
+          <div className="space-y-4 animate-fade-in-up">
             {enhancing && (
-              <div className="card flex flex-col items-center justify-center py-12 gap-4">
+              <div className="card flex flex-col items-center justify-center py-14 gap-4">
                 <Spinner size="lg" />
                 <p className="text-sm text-slate-500">AI is analysing your CV section by section...</p>
               </div>
@@ -208,40 +395,63 @@ export default function ResultsPage() {
 
             {enhanceResult && !enhancing && (
               <>
-                <div className="card flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-slate-500">Estimated score after improvements</p>
-                    <p className="text-3xl font-extrabold text-emerald-600">{enhanceResult.estimatedNewScore}<span className="text-lg text-slate-400">/100</span></p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs text-slate-400">Current score</p>
-                    <p className="text-2xl font-bold text-slate-600">{score.score}/100</p>
+                <div className="card">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] sm:text-xs text-slate-400 uppercase tracking-wide font-medium mb-1">Estimated Score After Improvements</p>
+                      <div className="flex items-end gap-1.5 sm:gap-2">
+                        <span className="text-3xl sm:text-4xl font-extrabold text-emerald-600">{enhanceResult.estimatedNewScore}</span>
+                        <span className="text-base sm:text-lg text-slate-400 mb-0.5 sm:mb-1">/100</span>
+                        <span className="text-xs sm:text-sm text-emerald-600 font-semibold mb-0.5 sm:mb-1">
+                          +{enhanceResult.estimatedNewScore - score.score} pts
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] sm:text-xs text-slate-400 uppercase tracking-wide font-medium mb-1">Current Score</p>
+                      <p className="text-2xl sm:text-3xl font-bold text-slate-600">{score.score}<span className="text-base sm:text-lg text-slate-400">/100</span></p>
+                    </div>
                   </div>
                 </div>
 
                 {enhanceResult.sections.map((s: SectionSuggestion, i: number) => (
-                  <div key={i} className="card space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold uppercase tracking-wide text-brand-600 bg-brand-50 px-3 py-1 rounded-full">{s.section}</span>
+                  <div key={i} className="card space-y-4">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <span className="text-xs font-bold uppercase tracking-wide text-brand-600 bg-brand-50 px-3 py-1 rounded-full ring-1 ring-brand-100">{s.section}</span>
+                        <p className="text-sm text-slate-500 mt-2 italic leading-relaxed">{s.issue}</p>
+                      </div>
                     </div>
-                    <p className="text-sm text-slate-500 italic">{s.issue}</p>
 
                     <div className="grid md:grid-cols-2 gap-3">
                       <div className="rounded-xl bg-red-50 ring-1 ring-red-100 p-4">
-                        <p className="text-xs font-semibold text-red-500 mb-2">Current</p>
-                        <p className="text-sm text-slate-700">{s.currentContent}</p>
+                        <p className="text-xs font-semibold text-red-500 mb-2 uppercase tracking-wide">Current</p>
+                        <p className="text-sm text-slate-700 leading-relaxed">{s.currentContent}</p>
                       </div>
                       <div className="rounded-xl bg-emerald-50 ring-1 ring-emerald-100 p-4">
-                        <p className="text-xs font-semibold text-emerald-600 mb-2">Improved</p>
-                        <p className="text-sm text-slate-700">{s.improvedVersion}</p>
+                        <p className="text-xs font-semibold text-emerald-600 mb-2 uppercase tracking-wide">Improved</p>
+                        <p className="text-sm text-slate-700 leading-relaxed">{s.improvedVersion}</p>
                       </div>
                     </div>
 
                     <button
                       onClick={() => handleCopy(s.improvedVersion, i)}
-                      className="w-full rounded-xl border border-slate-200 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+                      className={`w-full rounded-xl py-2.5 text-sm font-semibold transition-all ${
+                        copiedIdx === i
+                          ? 'bg-emerald-600 text-white'
+                          : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
                     >
-                      {copiedIdx === i ? '✓ Copied!' : 'Copy improved version'}
+                      {copiedIdx === i ? (
+                        <span className="flex items-center justify-center gap-2">
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                          </svg>
+                          Copied!
+                        </span>
+                      ) : (
+                        'Copy improved version'
+                      )}
                     </button>
                   </div>
                 ))}
@@ -252,35 +462,42 @@ export default function ResultsPage() {
 
         {/* Tab: Bullet Rewriter */}
         {activeTab === 'bullets' && (
-          <div className="card animate-slide-up">
-            <h2 className="font-bold text-slate-900 mb-1">AI Bullet Point Rewriter</h2>
-            <p className="text-sm text-slate-500 mb-5">
-              Click any bullet point to get 3 AI-rewritten alternatives optimised for ATS.
+          <div className="card animate-fade-in-up">
+            <h2 className="font-bold text-slate-950 mb-1 text-sm sm:text-base">AI Bullet Point Rewriter</h2>
+            <p className="text-xs sm:text-sm text-slate-500 mb-4 sm:mb-6 leading-relaxed">
+              Tap any bullet point to get 3 AI-rewritten alternatives optimised for ATS.
             </p>
             {allBullets.length === 0 ? (
-              <p className="text-sm text-slate-400 text-center py-8">
+              <p className="text-sm text-slate-400 text-center py-10">
                 No bullet points detected in your resume experience section.
               </p>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-5">
                 {parsedData?.experience.map((exp, eIdx) => (
                   <div key={eIdx}>
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
-                      {exp.title} @ {exp.company}
-                    </p>
-                    <ul className="space-y-2">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="h-6 w-6 rounded-md bg-brand-50 flex items-center justify-center flex-shrink-0">
+                        <svg className="h-3.5 w-3.5 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                      <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                        {exp.title} @ {exp.company}
+                      </p>
+                    </div>
+                    <ul className="space-y-1.5 sm:space-y-2">
                       {exp.bullets.map((bullet, bIdx) => (
                         <li
                           key={bIdx}
                           onClick={() => setSelectedBullet(bullet)}
-                          className="flex items-start gap-3 rounded-xl border border-slate-200 p-4 cursor-pointer hover:border-brand-400 hover:bg-brand-50 transition-colors group"
+                          className="flex items-start gap-2 sm:gap-3 rounded-xl border border-slate-100 bg-slate-50/50 p-3 sm:p-4 cursor-pointer hover:border-brand-300 hover:bg-brand-50 transition-all duration-150 group active:bg-brand-50 active:border-brand-300"
                         >
-                          <svg className="h-4 w-4 mt-0.5 text-brand-400 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <svg className="h-3.5 w-3.5 sm:h-4 sm:w-4 mt-0.5 text-brand-500 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                           </svg>
-                          <p className="text-sm text-slate-700 flex-1">{bullet}</p>
-                          <span className="text-xs text-brand-600 font-medium opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                            Rewrite →
+                          <p className="text-xs sm:text-sm text-slate-700 flex-1 leading-relaxed">{bullet}</p>
+                          <span className="text-xs text-brand-600 font-semibold opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                            Rewrite
                           </span>
                         </li>
                       ))}
@@ -294,12 +511,12 @@ export default function ResultsPage() {
 
         {/* Tab: Share */}
         {activeTab === 'share' && (
-          <div className="space-y-6 animate-slide-up">
+          <div className="space-y-5 animate-fade-in-up">
             <ShareCard score={score.score} />
 
             <div className="card">
-              <h2 className="font-bold text-slate-900 mb-3">Download Options</h2>
-              <p className="text-sm text-slate-500 mb-4">
+              <h2 className="font-bold text-slate-950 mb-2 text-base">Download Options</h2>
+              <p className="text-sm text-slate-500 mb-4 leading-relaxed">
                 Export your score report to include in job applications.
               </p>
               <div className="flex flex-wrap gap-3">
@@ -328,19 +545,93 @@ export default function ResultsPage() {
         />
       )}
 
+      {/* AI Prompt Modal */}
+      {showPromptModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-float animate-slide-up flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 flex-shrink-0">
+              <div>
+                <h2 className="text-lg font-bold text-slate-950">Generate Full CV with AI</h2>
+                <p className="text-xs text-slate-500 mt-0.5">Copy this prompt and paste it into Claude, ChatGPT, or Gemini</p>
+              </div>
+              <button onClick={() => setShowPromptModal(false)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 transition-colors">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto flex-1 space-y-4">
+              <div className="rounded-xl bg-slate-50 ring-1 ring-slate-200 p-4">
+                <pre className="text-xs text-slate-700 whitespace-pre-wrap font-mono leading-relaxed">
+                  {buildAIPrompt()}
+                </pre>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  onClick={handleCopyPrompt}
+                  className={`flex-1 flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-all ${
+                    promptCopied
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-gradient-to-r from-brand-600 to-brand-700 text-white hover:from-brand-700 hover:to-brand-800'
+                  }`}
+                >
+                  {promptCopied ? (
+                    <>
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Copied! Now paste it in your AI tool
+                    </>
+                  ) : (
+                    <>
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                      Copy Prompt
+                    </>
+                  )}
+                </button>
+                <a
+                  href="https://claude.ai"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-slate-200 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  Open Claude.ai
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </a>
+              </div>
+
+              <p className="text-xs text-slate-400 text-center">
+                Tip: Paste the prompt into Claude or ChatGPT, then download the response as a Word doc and format it.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Enhance CTA Modal */}
       {showEnhanceModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl animate-slide-up overflow-hidden">
-            <div className="bg-gradient-to-br from-brand-600 to-violet-600 px-6 py-8 text-center text-white">
-              <p className="text-5xl font-extrabold mb-1">{score.score}<span className="text-2xl opacity-70">/100</span></p>
-              <p className="text-sm opacity-80 mt-1">Your current ATS score</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-sm rounded-2xl bg-white shadow-float animate-slide-up overflow-hidden">
+            <div className="bg-hero dot-pattern px-6 py-8 text-center text-white relative overflow-hidden">
+              <div className="absolute inset-0 pointer-events-none">
+                <div className="absolute inset-0 bg-gradient-to-br from-brand-600/80 to-violet-600/80" />
+              </div>
+              <div className="relative">
+                <p className="text-6xl font-extrabold mb-1">{score.score}<span className="text-2xl opacity-60">/100</span></p>
+                <p className="text-sm opacity-75 mt-1">Your current ATS score</p>
+              </div>
             </div>
             <div className="px-6 py-6 text-center space-y-4">
               <div>
-                <p className="text-lg font-bold text-slate-900">Want to score higher?</p>
-                <p className="text-sm text-slate-500 mt-1">
-                  Our AI can analyse each section of your CV and show you exactly what to improve to pass more ATS filters.
+                <p className="text-lg font-bold text-slate-950">Want to score higher?</p>
+                <p className="text-sm text-slate-500 mt-1.5 leading-relaxed">
+                  Our AI analyses each section of your CV and shows you exactly what to improve.
                 </p>
               </div>
               <Button
@@ -365,19 +656,24 @@ export default function ResultsPage() {
         </div>
       )}
 
-      {/* Sticky Enhance CTA */}
+      {/* Sticky bottom bar — glass effect */}
       {activeTab !== 'enhance' && (
-        <div className="sticky bottom-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur-md px-4 py-3">
-          <div className="mx-auto max-w-5xl flex items-center justify-between gap-4">
-            <div className="hidden sm:block">
-              <p className="text-sm font-semibold text-slate-800">Score {score.score}/100 — want to do better?</p>
-              <p className="text-xs text-slate-500">AI will show you exactly what to fix, section by section</p>
+        <div className="sticky bottom-0 z-40 border-t border-slate-200/80 bg-white/90 backdrop-blur-xl px-4 sm:px-5 py-2.5 sm:py-3.5 shadow-float">
+          <div className="mx-auto max-w-5xl flex items-center justify-between gap-3">
+            <div className="hidden sm:flex items-center gap-3">
+              <div className={`h-8 w-8 sm:h-9 sm:w-9 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold text-white bg-gradient-to-br from-brand-600 to-violet-600 shadow-soft`}>
+                {score.score}
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Score {score.score}/100 — want to do better?</p>
+                <p className="text-xs text-slate-500">AI will show you exactly what to fix, section by section</p>
+              </div>
             </div>
             <button
               onClick={() => { setActiveTab('enhance'); handleEnhance(); }}
-              className="flex-shrink-0 flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-600 to-violet-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg hover:opacity-90 transition-opacity w-full sm:w-auto justify-center"
+              className="flex-shrink-0 flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-600 to-violet-600 px-4 sm:px-5 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold text-white shadow-glow hover:opacity-95 transition-opacity w-full sm:w-auto justify-center"
             >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="h-3.5 w-3.5 sm:h-4 sm:w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
               Enhance My CV with AI
@@ -386,8 +682,8 @@ export default function ResultsPage() {
         </div>
       )}
 
-      <footer className="border-t border-slate-100 py-6 text-center text-xs text-slate-400">
-        © 2025 FresherCV · Free forever · No login required · Powered by Groq AI
+      <footer className="border-t border-slate-200 bg-white py-4 sm:py-6 text-center text-xs text-slate-400">
+        © 2025 FresherCV · Free forever · No login required
       </footer>
     </div>
   );

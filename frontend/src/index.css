@@ -10,19 +10,73 @@
   body {
     @apply bg-slate-50 text-slate-900 antialiased;
   }
+  * {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
 }
 
 @layer components {
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white shadow-md transition-all hover:bg-brand-700 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-600 to-brand-700 px-6 py-3 text-sm font-semibold text-white shadow-soft transition-all hover:from-brand-700 hover:to-brand-800 hover:shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-brand-200 bg-white px-6 py-3 text-sm font-semibold text-brand-700 transition-all hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-6 py-3 text-sm font-semibold text-slate-700 shadow-soft transition-all hover:bg-slate-50 hover:border-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .card {
-    @apply rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-100;
+    @apply rounded-2xl bg-white p-4 sm:p-6 shadow-card ring-1 ring-slate-100/80;
+  }
+  .card-hover {
+    @apply rounded-2xl bg-white p-4 sm:p-6 shadow-card ring-1 ring-slate-100/80 transition-all duration-200 hover:shadow-float hover:ring-brand-200/50 hover:-translate-y-0.5;
   }
   .badge {
     @apply inline-flex items-center rounded-full px-3 py-1 text-xs font-medium;
+  }
+
+  /* Dot pattern for hero backgrounds */
+  .dot-pattern {
+    background-image: radial-gradient(circle, rgba(255,255,255,0.08) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  /* Frosted glass nav */
+  .glass-nav {
+    @apply bg-white/80 backdrop-blur-xl border-b border-slate-200/60;
+  }
+
+  /* Progress step */
+  .step-circle {
+    @apply flex h-7 w-7 sm:h-9 sm:w-9 items-center justify-center rounded-full text-xs sm:text-sm font-semibold transition-all duration-300 ring-2;
+  }
+  .step-circle-done {
+    @apply bg-brand-600 text-white ring-brand-600;
+  }
+  .step-circle-active {
+    @apply bg-brand-600 text-white ring-brand-600 shadow-glow;
+  }
+  .step-circle-pending {
+    @apply bg-white text-slate-400 ring-slate-200;
+  }
+
+  /* Pill tab */
+  .tab-pill {
+    @apply relative px-5 py-2 text-sm font-medium rounded-full transition-all duration-200 whitespace-nowrap;
+  }
+
+  /* Score metric card */
+  .metric-card {
+    @apply rounded-xl bg-slate-50/80 border border-slate-100 p-4 space-y-3;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-to-r from-brand-500 to-violet-500 bg-clip-text text-transparent;
+  }
+  .text-gradient-white {
+    @apply bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent;
+  }
+  .bg-hero {
+    background: linear-gradient(160deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
   }
 }
